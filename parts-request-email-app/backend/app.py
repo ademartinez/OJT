@@ -1,114 +1,211 @@
 import os
 from flask import Flask, request, jsonify
-from flask_mail import Mail, Message
+from flask_cors import CORS
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.image import MIMEImage
 from dotenv import load_dotenv
-from flask_cors import CORS  # Import Flask-CORS
 
 # Load environment variables
 load_dotenv()
 
-# Initialize Flask app
 app = Flask(__name__)
-
-# Enable CORS for all routes
 CORS(app)
 
-# Mail configuration
-app.config['MAIL_SERVER'] = 'smtp.gmail.com'  # Example for Gmail
-app.config['MAIL_PORT'] = 587
-app.config['MAIL_USE_TLS'] = True
-app.config['MAIL_USERNAME'] = os.getenv('EMAIL_USER')  # Your email account (from .env)
-app.config['MAIL_PASSWORD'] = os.getenv('EMAIL_PASSWORD')  # Email password (from .env)
-app.config['MAIL_DEFAULT_SENDER'] = os.getenv('EMAIL_USER')
+EMAIL_USER = os.getenv('EMAIL_USER')
+EMAIL_PASSWORD = os.getenv('EMAIL_PASSWORD')
 
-mail = Mail(app)
+# Ensure the uploads directory exists
+# Define separate upload folders
+GENERAL_IMAGES_FOLDER = './uploads/general_images'
+DEFECTIVE_PART_IMAGES_FOLDER = './uploads/defective_part_images'
+# Ensure the folders exist
+os.makedirs(GENERAL_IMAGES_FOLDER, exist_ok=True)
+os.makedirs(DEFECTIVE_PART_IMAGES_FOLDER, exist_ok=True)
+
+# Ensure the uploads directory exists
+UPLOAD_FOLDER = './uploads'
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
 
 @app.route('/send-email', methods=['POST'])
 def send_email():
     try:
-        # Extract form data
-        to_emails = [request.form['toEmail1'], request.form['toEmail2'], request.form['toEmail3']]
-        cc_emails = [request.form['CcEmail1'], request.form['CcEmail2']]
-        subject = f"[Parent Request ID: {request.form['parentRequestID']}] Part Request: {request.form['partRequestSubj']}"
+        # Get subject and message from the form data
+        subject = request.form['subject']
+        company = request.form['company']
+        contact = request.form['contact']
+        partRequest = request.form['partRequest']
+        attendingEngineer = request.form['attendingEngineer']
+        model = request.form['model']
+        productNo = request.form['productNo']
+        serialNo = request.form['serialNo']
+        issueDescription = request.form['issueDescription']
+        hasUnitBeenRepaired = request.form['hasUnitBeenRepaired']
+        repairHistory = request.form['repairHistory']
+        troubleshootingPerformed = request.form['troubleshootingPerformed']
+        UEFIDiag = request.form['UEFIDiag']
+        UEFIFailureID = request.form['UEFIFailureID']
+        exceptionCodes = request.form['exceptionCodes']
+        windowsUpdate = request.form['windowsUpdate']
+        firmwareUpdate = request.form['firmwareUpdate']
+        biosUpdate = request.form['biosUpdate']
+        reimaging = request.form['reimaging']
+        windowsOSImage = request.form['windowsOSImage']
+        minConfigReset = request.form['minConfigReset']
+        WISEAdvisory = request.form['WISEAdvisory']
+        nonHP = request.form['nonHP']
+        suggestedRec = request.form['suggestedRec']
+        CSDPAttachment = request.form['CSDPAttachment']
+        emailCoordinator = request.form['emailCoordinator']
+        emailAssignedEngineer = request.form['emailAssignedEngineer']
+        ccBody = request.form['ccBody']
+        ccEmail = request.form['ccEmail']
+        
+        # Get recipients and CCs from the form data
+        recipients = [request.form[key] for key in request.form if key.startswith('recipient')]
+        ccs = [request.form[key] for key in request.form if key.startswith('cc')]
 
-        # Create the email body with the user inputs
+        # Get defectivePartCTCode values from the form data
+        defective_part_ct_codes = [request.form[key] for key in request.form if key.startswith('defectivePartCTCode')]
+
+        # Create the email message
+        msg = MIMEMultipart('related')
+        msg['Subject'] = subject
+        msg['From'] = EMAIL_USER
+        msg['To'] = ', '.join(recipients)
+        msg['Cc'] = ', '.join(ccs)
+
+        # Create the body with the inline images
         body = f"""
-        Company: {request.form['company']}
-        Contact: {request.form['contact']}
-        Part Request: {request.form['partRequest']}
-        Attending Engineer: {request.form['attendingEngineer']}
-        Model: {request.form['model']}
-        Product No: {request.form['productNo']}
-        Serial No: {request.form['serialNo']}
-        Issue Description: {request.form['issueDescription']}
-        Has the unit been repaired for this issue before: {request.form['hasUnitBeenRepaired']}
-        If yes, please provide repair history (Must be Bulleted List per Date): {request.form['repairHistory']}
-        Detailed Troubleshooting Performed (list in points): {request.form['troubleshootingPerformed']}
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <style> 
+                body {{ 
+                    font-family: Aptos;
+                    }}
+                pre {{
+                    font-family: Aptos;                    
+                    margin: 0 20px;
+                    }} 
+            </style>
+        </head>
+        <body>
         """
 
-       # Handle the defective part image (check if it's uploaded)
-        defective_part_image = request.files.get('defectivePartImage')
-        if defective_part_image:
-            filename = defective_part_image.filename
-            file_path = os.path.join('uploads', filename)  # Save the image locally
-            defective_part_image.save(file_path)
-            body += f"\nPicture/Image(s): <img src='cid:{filename}'>"
+        body += f"""
+     <p>Hi Team,<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Kindly process a replacement part to HP.</p>
 
-        # Handle additional parts
-        additional_parts = []
-        for i in range(len(request.files)):
-            part_text = request.form.get(f"additionalPartText{i}")
-            part_file = request.files.get(f"additionalPartFile{i}")
-            
-            additional_parts.append(f"Part {i+1}: {part_text}")
-            if part_file:
-                filename = part_file.filename
-                file_path = os.path.join('uploads', filename)  # Save uploaded file
-                part_file.save(file_path)
-                additional_parts.append(f"File: <img src='cid:{filename}'>")
+     <p>Company : {company}<br>
+        Contact : {contact}<br>
+        Part Request:</p>
 
-        body += "\n\n".join(additional_parts)
+        <pre>{partRequest}</pre>
+
+     <p>Attending Engineer: {attendingEngineer}</p>
+
+     <p>Model                                               : {model}<br>
+        Product No                                          : {productNo}<br>
+        Serial No                                           : {serialNo}<br>
+        Issue Description:</p>
+        <pre>{issueDescription}</pre>
+        
+     <p>Has the unit been repaired for this issue before    : {hasUnitBeenRepaired}</p>
+        """
+        
+        if hasUnitBeenRepaired == 'Yes':
+            body += f"""
+            <p>If yes, please provide repair history (Must be in Bulleted List per Date):</p>
+            <ul>
+            """ + "".join([f'<li>{line}</li>' for line in repairHistory.split('\n')]) + """
+            </ul>
+            """
         
         body += f"""
-        UEFI Diagnostics Performed: {request.form['uefiDiagnosticsPerformed']}
-        If yes, please provide the UEFI Failure ID: {request.form['uefiFailureID']}
-        If no, (Please share the reason - T/C the use of exception codes): {request.form['exceptionReason']}
-        Performed Windows Update: {request.form['windowsUpdate']}
-        Performed Firmware/Drivers update: {request.form['firmwareDriversUpdate']}
-        Performed BIOS Update / Crisis Recovery: {request.form['biosUpdate']}
-        Performed Reimaging/Reformat/Reinstallation of OS: {request.form['reimagingOS']}
-        Windows OS Image: {request.form['windowsOSImage']}
-        Performed Minimum Config/Hard Reset: {request.form['hardReset']}
-        Is there any WISE Advisory: {request.form['wiseAdvisory']}
-        Is there any 3rd Party/Non-HP Part involved: {request.form['thirdPartyPart']}
-        Suggested Recommendation: {request.form['suggestedRecommendation']}
-        With CSDP attachment: {request.form['csdpAttachment']}
-        Email Address Coordinator (Handling CSDP): {request.form['csdpEmail']}
-        Email Address of Assigned Engineer: {request.form['engineerEmail']}
-        CC: {request.form['ccEmailName']} {request.form['ccEmail']}
+        <p>Detailed troubleshooting performed (list in points):</p>
+        <ul>
+        """ + "".join([f'<li>{line}</li>' for line in troubleshootingPerformed.split('\n')]) + """
+        </ul>
+        """ 
+
+        # Add general images to the email body
+        body += "<p>Picture/Image(s):</p>"
+        for index, key in enumerate(request.files):
+            if not key.startswith("defectivePartCTCodeImage"):  # Skip defectivePartCTCodeImage files
+                body += f'<img src="cid:image{index}" alt="User Image {index + 1}" style="max-width: 400px; height: auto;" /><br>'
+
+        body += """
+        <p>Defective Part CT Code:</p>
+        """
+
+        # Add defectivePartCTCode values paired with their images to the email body
+        if defective_part_ct_codes:
+            for index, code in enumerate(defective_part_ct_codes):
+                body += f"<p>{code}<br>"
+                if f"defectivePartCTCodeImage{index}" in request.files:  # Check if the image exists for the index
+                    body += f'<img src="cid:defectivePartCTCodeImage{index}" alt="Defective Part CT Code Image {index + 1}" style="max-width: 400px; height: auto;" /></p>'
+
+        body += f"""
+     <p>UEFI Diagnostics Performed                                          : {UEFIDiag}<br>
+        If yes, please provide the UEFI Failure ID                          : {UEFIFailureID}<br>
+        If no, (Please share the reason - T/C the use of exception codes)   : {exceptionCodes}<br>
+        Performed Windows Update                                            : {windowsUpdate}<br>
+        Performed Firmware/Drivers Update                                   : {firmwareUpdate}<br>
+        Performed BIOS Update/Crisis Recovery                               : {biosUpdate}<br>
+        Performed Reimaging/Reformat/Reinstallation of OS                   : {reimaging}<br>
+        Windows OS Image                                                    : {windowsOSImage}<br>
+        Performed Minimum Config/Hard Reset                                 : {minConfigReset}<br>
+        Is there any WISE Advisory                                          : {WISEAdvisory}<br>
+        Is there any 3rd Party/Non-HP Part involved                         : {nonHP}<br>
+        Suggested Recommendation                                            : {suggestedRec}</p>
+
+     <p>With CSDP Attachment                                                : {CSDPAttachment}<br>
+        Email Address Coordinator (Handling CSDP)                           : {emailCoordinator}<br>
+        Email Address of Assigned Engineer                                  : {emailAssignedEngineer}<br>
+        CC: {ccBody} {ccEmail}</p>
+      
+     <p>Regards,</p>
+     <p>{attendingEngineer}</p>
+        </body>
+        </html>
 
         """
 
-         # Prepare message with attachment
-        msg = Message(subject, recipients=to_emails, cc=cc_emails, body=body, html=body)
+        msg.attach(MIMEText(body, 'html'))
 
-        # Attach images to the email if available (for inline display)
-        if defective_part_image:
-            msg.attach(defective_part_image.filename, 'image/jpeg', defective_part_image.read(), headers={'Content-ID': f'<{defective_part_image.filename}>'})
+        # Attach the images inline
+        for key, file in request.files.items():
+            if key.startswith("defectivePartCTCodeImage"):  # Save defectivePartCTCodeImage files
+                file_path = os.path.join(DEFECTIVE_PART_IMAGES_FOLDER, file.filename)
+                file.save(file_path)
+                with open(file_path, 'rb') as f:
+                    img = MIMEImage(f.read())
+                    index = key.replace("defectivePartCTCodeImage", "")  # Extract the index from the key
+                    img.add_header('Content-ID', f'<defectivePartCTCodeImage{index}>')
+            else:  # Save general images
+                file_path = os.path.join(GENERAL_IMAGES_FOLDER, file.filename)
+                file.save(file_path)
+                with open(file_path, 'rb') as f:
+                    img = MIMEImage(f.read())
+                    index = key.replace("image", "")  # Extract the index for general images
+                    img.add_header('Content-ID', f'<image{index}>')
+            img.add_header('Content-Disposition', 'inline', filename=file.filename)  # Ensure inline display
+            msg.attach(img)
+        
+        # Send the email
+        with smtplib.SMTP('smtp.gmail.com', 587) as server:
+            server.starttls()
+            server.login(EMAIL_USER, EMAIL_PASSWORD)
+            server.sendmail(EMAIL_USER, recipients + ccs, msg.as_string())
+        
+        return jsonify({'message': 'Email sent successfully!'}), 200
 
-        # Attach additional part images if available
-        for i in range(len(request.files)):
-            part_file = request.files.get(f"additionalPartFile{i}")
-            if part_file:
-                msg.attach(part_file.filename, 'image/jpeg', part_file.read(), headers={'Content-ID': f'<{part_file.filename}>'})
-
-        # Send email
-        mail.send(msg)
-
-        return jsonify({"success": True, "message": "Email sent successfully!"})
     except Exception as e:
-        print(f"Error: {str(e)}")  # Add more logging
-        return jsonify({"success": False, "message": str(e)})
+        print(f"Error: {str(e)}")  # Log the error to the console for debugging
+        return jsonify({'message': f'Failed to send email: {str(e)}'}), 500
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     app.run(debug=True)
